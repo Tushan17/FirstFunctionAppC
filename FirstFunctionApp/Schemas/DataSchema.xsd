@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://example.com/data"
+           xmlns:tns="http://example.com/data"
+           elementFormDefault="qualified">
+
+  <!-- Root element -->
+  <xs:element name="DataRoot">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Company" type="tns:CompanyType" minOccurs="1" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="version" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- Company type -->
+  <xs:complexType name="CompanyType">
+    <xs:sequence>
+      <xs:element name="CompanyId" type="xs:int"/>
+      <xs:element name="CompanyName" type="xs:string"/>
+      <xs:element name="Address" type="tns:AddressType"/>
+      <xs:element name="Employees" type="tns:EmployeesType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Address type -->
+  <xs:complexType name="AddressType">
+    <xs:sequence>
+      <xs:element name="Street" type="xs:string"/>
+      <xs:element name="City" type="xs:string"/>
+      <xs:element name="State" type="xs:string"/>
+      <xs:element name="ZipCode" type="xs:string"/>
+      <xs:element name="Country" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Employees type -->
+  <xs:complexType name="EmployeesType">
+    <xs:sequence>
+      <xs:element name="Employee" type="tns:EmployeeType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Employee type -->
+  <xs:complexType name="EmployeeType">
+    <xs:sequence>
+      <xs:element name="EmployeeId" type="xs:int"/>
+      <xs:element name="FirstName" type="xs:string"/>
+      <xs:element name="LastName" type="xs:string"/>
+      <xs:element name="Email" type="xs:string"/>
+      <xs:element name="Department" type="xs:string"/>
+      <xs:element name="Position" type="xs:string"/>
+      <xs:element name="Salary" type="xs:decimal"/>
+      <xs:element name="HireDate" type="xs:date"/>
+    </xs:sequence>
+  </xs:complexType>
+
+</xs:schema>

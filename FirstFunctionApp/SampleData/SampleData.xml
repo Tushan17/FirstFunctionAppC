@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DataRoot xmlns="http://example.com/data" version="1.0">
+  <Company>
+    <CompanyId>1</CompanyId>
+    <CompanyName>Tech Solutions Inc.</CompanyName>
+    <Address>
+      <Street>123 Main Street</Street>
+      <City>Seattle</City>
+      <State>WA</State>
+      <ZipCode>98101</ZipCode>
+      <Country>USA</Country>
+    </Address>
+    <Employees>
+      <Employee>
+        <EmployeeId>101</EmployeeId>
+        <FirstName>John</FirstName>
+        <LastName>Doe</LastName>
+        <Email>john.doe@techsolutions.com</Email>
+        <Department>Engineering</Department>
+        <Position>Senior Developer</Position>
+        <Salary>95000.00</Salary>
+        <HireDate>2020-01-15</HireDate>
+      </Employee>
+      <Employee>
+        <EmployeeId>102</EmployeeId>
+        <FirstName>Jane</FirstName>
+        <LastName>Smith</LastName>
+        <Email>jane.smith@techsolutions.com</Email>
+        <Department>Marketing</Department>
+        <Position>Marketing Manager</Position>
+        <Salary>85000.00</Salary>
+        <HireDate>2019-06-01</HireDate>
+      </Employee>
+    </Employees>
+  </Company>
+  <Company>
+    <CompanyId>2</CompanyId>
+    <CompanyName>Data Corp</CompanyName>
+    <Address>
+      <Street>456 Oak Avenue</Street>
+      <City>Portland</City>
+      <State>OR</State>
+      <ZipCode>97201</ZipCode>
+      <Country>USA</Country>
+    </Address>
+    <Employees>
+      <Employee>
+        <EmployeeId>201</EmployeeId>
+        <FirstName>Bob</FirstName>
+        <LastName>Johnson</LastName>
+        <Email>bob.johnson@datacorp.com</Email>
+        <Department>Sales</Department>
+        <Position>Sales Director</Position>
+        <Salary>105000.00</Salary>
+        <HireDate>2018-03-20</HireDate>
+      </Employee>
+    </Employees>
+  </Company>
+</DataRoot>
