@@ -24,7 +24,7 @@ public class Function1
     }
 
     [Function("Function1")]
-    public IActionResult Run([HttpTrigger(AuthorizationLevel.Function, "get", "post")] HttpRequest req)
+    public IActionResult Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequest req)
     {
         _logger.LogInformation("C# HTTP trigger function processed a request.");
         return new OkObjectResult("Welcome to Azure Functions!");
@@ -32,7 +32,7 @@ public class Function1
 
     [Function("UploadXml")]
     public async Task<IActionResult> UploadXml(
-        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req)
     {
         _logger.LogInformation("Processing XML upload request from Business Central.");
 
