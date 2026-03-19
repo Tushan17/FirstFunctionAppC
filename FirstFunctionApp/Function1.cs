@@ -34,14 +34,20 @@ public class Function1
     public async Task<IActionResult> UploadXml(
         [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req)
     {
-        _logger.LogInformation("Processing XML upload request.");
+        _logger.LogInformation("Processing XML upload request from Business Central.");
 
         try
         {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            // Read the request body with UTF-8 encoding to handle Business Central outstream
+            string requestBody;
+            using (var reader = new StreamReader(req.Body, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            {
+                requestBody = await reader.ReadToEndAsync();
+            }
 
             if (string.IsNullOrWhiteSpace(requestBody))
             {
+                _logger.LogWarning("Received empty request body");
                 return new BadRequestObjectResult(new XmlValidationResponse
                 {
                     Success = false,
@@ -49,18 +55,58 @@ public class Function1
                 });
             }
 
-            var uploadRequest = JsonConvert.DeserializeObject<XmlUploadRequest>(requestBody);
+            // Remove BOM if present (Business Central often includes it)
+            requestBody = requestBody.TrimStart('\uFEFF', '\u200B');
 
-            if (uploadRequest == null || string.IsNullOrWhiteSpace(uploadRequest.XmlContent))
+            _logger.LogInformation("Request body length: {Length} characters, Content-Type: {ContentType}", 
+                requestBody.Length, req.ContentType);
+
+            string xmlContent;
+
+            // Detect if the request is raw XML or JSON-wrapped
+            // Business Central typically sends raw XML via outstream
+            var contentType = req.ContentType?.ToLowerInvariant() ?? string.Empty;
+
+            if (contentType.Contains("xml") || requestBody.TrimStart().StartsWith("<?xml") || requestBody.TrimStart().StartsWith("<"))
             {
-                return new BadRequestObjectResult(new XmlValidationResponse
+                // Raw XML from Business Central outstream
+                _logger.LogInformation("Detected raw XML format (Business Central outstream)");
+                xmlContent = requestBody;
+            }
+            else
+            {
+                // JSON-wrapped XML format
+                _logger.LogInformation("Detected JSON format, attempting to deserialize");
+                try
                 {
-                    Success = false,
-                    Message = "XmlContent is required in the request body"
-                });
+                    var uploadRequest = JsonConvert.DeserializeObject<XmlUploadRequest>(requestBody);
+
+                    if (uploadRequest == null || string.IsNullOrWhiteSpace(uploadRequest.XmlContent))
+                    {
+                        _logger.LogWarning("JSON deserialization resulted in null or empty XmlContent");
+                        return new BadRequestObjectResult(new XmlValidationResponse
+                        {
+                            Success = false,
+                            Message = "XmlContent is required in the request body"
+                        });
+                    }
+
+                    xmlContent = uploadRequest.XmlContent;
+                }
+                catch (JsonException jsonEx)
+                {
+                    _logger.LogError(jsonEx, "Failed to parse JSON request body");
+                    return new BadRequestObjectResult(new XmlValidationResponse
+                    {
+                        Success = false,
+                        Message = $"Invalid JSON format: {jsonEx.Message}"
+                    });
+                }
             }
 
-            var (isValid, errors) = _validationService.ValidateXml(uploadRequest.XmlContent);
+            _logger.LogInformation("Validating XML content (length: {Length} characters)", xmlContent.Length);
+
+            var (isValid, errors) = _validationService.ValidateXml(xmlContent);
 
             if (!isValid)
             {
@@ -73,14 +119,17 @@ public class Function1
                 });
             }
 
-            var dataRoot = _processingService.ProcessXmlData(uploadRequest.XmlContent);
+            _logger.LogInformation("XML validation successful, processing data");
+
+            var dataRoot = _processingService.ProcessXmlData(xmlContent);
 
             if (dataRoot == null)
             {
+                _logger.LogError("XML processing returned null result");
                 return new StatusCodeResult(StatusCodes.Status500InternalServerError);
             }
 
-            _logger.LogInformation("XML processed successfully");
+            _logger.LogInformation("XML processed successfully from Business Central");
 
             return new OkObjectResult(new XmlValidationResponse
             {
@@ -91,7 +140,7 @@ public class Function1
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing XML upload");
+            _logger.LogError(ex, "Error processing XML upload from Business Central");
             return new ObjectResult(new XmlValidationResponse
             {
                 Success = false,
