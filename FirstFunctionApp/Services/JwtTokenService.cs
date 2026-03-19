@@ -15,11 +15,11 @@ public class JwtTokenService
 
     public JwtTokenService(IConfiguration configuration)
     {
-        _secret = configuration["Jwt__Secret"]
+        _secret = configuration["Jwt:Secret"]
             ?? throw new InvalidOperationException("Jwt__Secret is not configured.");
-        _issuer = configuration["Jwt__Issuer"] ?? "FirstFunctionApp";
-        _audience = configuration["Jwt__Audience"] ?? "FirstFunctionAppUsers";
-        _expirationMinutes = int.TryParse(configuration["Jwt__ExpirationMinutes"], out var exp) ? exp : 60;
+        _issuer = configuration["Jwt:Issuer"] ?? "FirstFunctionApp";
+        _audience = configuration["Jwt:Audience"] ?? "FirstFunctionAppUsers";
+        _expirationMinutes = int.TryParse(configuration["Jwt:ExpirationMinutes"], out var exp) ? exp : 60;
     }
 
     public (string Token, DateTime Expires) GenerateToken(string username)

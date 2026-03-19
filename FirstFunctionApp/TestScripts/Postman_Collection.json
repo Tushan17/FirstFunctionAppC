@@ -1,8 +1,18 @@
 {
   "info": {
     "name": "XML Upload Function Tests",
-    "description": "Test collection for Azure Function XML Upload with validation.\nIncludes raw XML tests simulating Business Central instream/outstream and JSON-wrapped format.",
+    "description": "Test collection for Azure Function XML Upload with JWT authentication.\nRun '01 Get Token - Valid Credentials' first — it saves the token to {{jwtToken}}.\nAll protected requests inherit the Bearer token from the collection-level auth.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwtToken}}",
+        "type": "string"
+      }
+    ]
   },
   "variable": [
     {
@@ -11,462 +21,594 @@
       "type": "string"
     },
     {
-      "key": "functionKey",
+      "key": "apiUsername",
+      "value": "admin",
+      "type": "string",
+      "description": "Must match Api__Username in local.settings.json / Azure app settings"
+    },
+    {
+      "key": "apiPassword",
       "value": "",
       "type": "string",
-      "description": "Azure Function key - leave empty for local dev, add key for Azure-hosted"
+      "description": "Must match Api__Password in local.settings.json / Azure app settings — fill in before running"
+    },
+    {
+      "key": "jwtToken",
+      "value": "",
+      "type": "string",
+      "description": "Populated automatically by the Get Token request — do not edit manually"
     }
   ],
   "item": [
     {
-      "name": "BC - Raw XML (text/xml)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "text/xml; charset=utf-8",
-            "description": "Business Central outstream default content type"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <CompanyName>Tech Solutions Inc.</CompanyName>\n    <Address>\n      <Street>123 Main Street</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees>\n      <Employee>\n        <EmployeeId>101</EmployeeId>\n        <FirstName>John</FirstName>\n        <LastName>Doe</LastName>\n        <Email>john.doe@techsolutions.com</Email>\n        <Department>Engineering</Department>\n        <Position>Senior Developer</Position>\n        <Salary>95000.00</Salary>\n        <HireDate>2020-01-15</HireDate>\n      </Employee>\n    </Employees>\n  </Company>\n</DataRoot>",
-          "options": {
-            "raw": {
-              "language": "xml"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
-            {
-              "key": "code",
-              "value": "{{functionKey}}",
-              "description": "Not needed for local dev"
-            }
-          ]
-        },
-        "description": "Simulates Business Central outstream sending raw XML with text/xml Content-Type. Expected: 200 OK with success=true."
-      },
-      "event": [
+      "name": "Authentication",
+      "auth": { "type": "noauth" },
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
-              "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });",
-              "pm.test('Data is returned', function() { pm.expect(pm.response.json().data).to.not.be.null; });"
-            ]
-          }
+          "name": "01 Get Token - Valid Credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{apiUsername}}\",\n  \"password\": \"{{apiPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "token"]
+            },
+            "description": "Obtains a JWT and saves it to {{jwtToken}}. Run this first before any protected request. Expected: 200 OK."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Token returned and saved', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.expires).to.be.a('string');",
+                  "    pm.collectionVariables.set('jwtToken', json.token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "02 Get Token - Invalid Credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{apiUsername}}\",\n  \"password\": \"wrongpassword\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "token"]
+            },
+            "description": "Sends an incorrect password. Expected: 401 Unauthorized."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', function() { pm.response.to.have.status(401); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
+                  "pm.test('Message mentions invalid credentials', function() {",
+                  "    pm.expect(pm.response.json().message.toLowerCase()).to.include('invalid');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "03 Get Token - Missing Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "token"]
+            },
+            "description": "Sends an empty username and no password. Expected: 400 Bad Request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
+                  "pm.test('Message mentions required fields', function() {",
+                  "    pm.expect(pm.response.json().message.toLowerCase()).to.include('required');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
-      ],
-      "response": []
+      ]
     },
     {
-      "name": "BC - Raw XML (application/xml)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/xml; charset=utf-8"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>2</CompanyId>\n    <CompanyName>Data Corp</CompanyName>\n    <Address>\n      <Street>456 Oak Avenue</Street>\n      <City>Portland</City>\n      <State>OR</State>\n      <ZipCode>97201</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees>\n      <Employee>\n        <EmployeeId>201</EmployeeId>\n        <FirstName>Bob</FirstName>\n        <LastName>Johnson</LastName>\n        <Email>bob.johnson@datacorp.com</Email>\n        <Department>Sales</Department>\n        <Position>Sales Director</Position>\n        <Salary>105000.00</Salary>\n        <HireDate>2018-03-20</HireDate>\n      </Employee>\n    </Employees>\n  </Company>\n</DataRoot>",
-          "options": {
-            "raw": {
-              "language": "xml"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
-            {
-              "key": "code",
-              "value": "{{functionKey}}"
-            }
-          ]
-        },
-        "description": "Simulates Business Central with application/xml Content-Type. Expected: 200 OK."
-      },
-      "event": [
+      "name": "Health Check",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
-              "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });",
-              "pm.test('Data is returned', function() { pm.expect(pm.response.json().data).to.not.be.null; });"
-            ]
-          }
+          "name": "Function1 - Authenticated",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Function1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Function1"]
+            },
+            "description": "Health check using a valid JWT from {{jwtToken}}. Expected: 200 OK with Welcome message."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Welcome message returned', function() { pm.expect(pm.response.text()).to.include('Welcome'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Function1 - No Token",
+          "auth": { "type": "noauth" },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Function1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Function1"]
+            },
+            "description": "Health check with no Authorization header. Expected: 401 Unauthorized."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', function() { pm.response.to.have.status(401); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
-      ],
-      "response": []
+      ]
     },
     {
-      "name": "BC - Multi-Company XML",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "text/xml; charset=utf-8"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <CompanyName>Tech Solutions Inc.</CompanyName>\n    <Address>\n      <Street>123 Main Street</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees>\n      <Employee>\n        <EmployeeId>101</EmployeeId>\n        <FirstName>John</FirstName>\n        <LastName>Doe</LastName>\n        <Email>john.doe@techsolutions.com</Email>\n        <Department>Engineering</Department>\n        <Position>Senior Developer</Position>\n        <Salary>95000.00</Salary>\n        <HireDate>2020-01-15</HireDate>\n      </Employee>\n      <Employee>\n        <EmployeeId>102</EmployeeId>\n        <FirstName>Jane</FirstName>\n        <LastName>Smith</LastName>\n        <Email>jane.smith@techsolutions.com</Email>\n        <Department>Marketing</Department>\n        <Position>Marketing Manager</Position>\n        <Salary>85000.00</Salary>\n        <HireDate>2019-06-01</HireDate>\n      </Employee>\n    </Employees>\n  </Company>\n  <Company>\n    <CompanyId>2</CompanyId>\n    <CompanyName>Data Corp</CompanyName>\n    <Address>\n      <Street>456 Oak Avenue</Street>\n      <City>Portland</City>\n      <State>OR</State>\n      <ZipCode>97201</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees>\n      <Employee>\n        <EmployeeId>201</EmployeeId>\n        <FirstName>Bob</FirstName>\n        <LastName>Johnson</LastName>\n        <Email>bob.johnson@datacorp.com</Email>\n        <Department>Sales</Department>\n        <Position>Sales Director</Position>\n        <Salary>105000.00</Salary>\n        <HireDate>2018-03-20</HireDate>\n      </Employee>\n    </Employees>\n  </Company>\n</DataRoot>",
-          "options": {
-            "raw": {
-              "language": "xml"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
-            {
-              "key": "code",
-              "value": "{{functionKey}}"
-            }
-          ]
-        },
-        "description": "Full SampleData.xml payload (2 companies, 3 employees) sent as Business Central outstream. Expected: 200 OK."
-      },
-      "event": [
+      "name": "UploadXml - Success Cases",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
-              "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });",
-              "pm.test('Data is returned', function() { pm.expect(pm.response.json().data).to.not.be.null; });"
-            ]
-          }
+          "name": "BC - Raw XML (text/xml)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml; charset=utf-8",
+                "description": "Business Central outstream default content type"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <CompanyName>Tech Solutions Inc.</CompanyName>\n    <Address>\n      <Street>123 Main Street</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees>\n      <Employee>\n        <EmployeeId>101</EmployeeId>\n        <FirstName>John</FirstName>\n        <LastName>Doe</LastName>\n        <Email>john.doe@techsolutions.com</Email>\n        <Department>Engineering</Department>\n        <Position>Senior Developer</Position>\n        <Salary>95000.00</Salary>\n        <HireDate>2020-01-15</HireDate>\n      </Employee>\n    </Employees>\n  </Company>\n</DataRoot>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Simulates Business Central outstream sending raw XML with text/xml Content-Type. Expected: 200 OK with success=true."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });",
+                  "pm.test('Data is returned', function() { pm.expect(pm.response.json().data).to.not.be.null; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "BC - Raw XML (application/xml)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/xml; charset=utf-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>2</CompanyId>\n    <CompanyName>Data Corp</CompanyName>\n    <Address>\n      <Street>456 Oak Avenue</Street>\n      <City>Portland</City>\n      <State>OR</State>\n      <ZipCode>97201</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees>\n      <Employee>\n        <EmployeeId>201</EmployeeId>\n        <FirstName>Bob</FirstName>\n        <LastName>Johnson</LastName>\n        <Email>bob.johnson@datacorp.com</Email>\n        <Department>Sales</Department>\n        <Position>Sales Director</Position>\n        <Salary>105000.00</Salary>\n        <HireDate>2018-03-20</HireDate>\n      </Employee>\n    </Employees>\n  </Company>\n</DataRoot>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Simulates Business Central with application/xml Content-Type. Expected: 200 OK."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });",
+                  "pm.test('Data is returned', function() { pm.expect(pm.response.json().data).to.not.be.null; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "BC - Multi-Company XML",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <CompanyName>Tech Solutions Inc.</CompanyName>\n    <Address>\n      <Street>123 Main Street</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees>\n      <Employee>\n        <EmployeeId>101</EmployeeId>\n        <FirstName>John</FirstName>\n        <LastName>Doe</LastName>\n        <Email>john.doe@techsolutions.com</Email>\n        <Department>Engineering</Department>\n        <Position>Senior Developer</Position>\n        <Salary>95000.00</Salary>\n        <HireDate>2020-01-15</HireDate>\n      </Employee>\n      <Employee>\n        <EmployeeId>102</EmployeeId>\n        <FirstName>Jane</FirstName>\n        <LastName>Smith</LastName>\n        <Email>jane.smith@techsolutions.com</Email>\n        <Department>Marketing</Department>\n        <Position>Marketing Manager</Position>\n        <Salary>85000.00</Salary>\n        <HireDate>2019-06-01</HireDate>\n      </Employee>\n    </Employees>\n  </Company>\n  <Company>\n    <CompanyId>2</CompanyId>\n    <CompanyName>Data Corp</CompanyName>\n    <Address>\n      <Street>456 Oak Avenue</Street>\n      <City>Portland</City>\n      <State>OR</State>\n      <ZipCode>97201</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees>\n      <Employee>\n        <EmployeeId>201</EmployeeId>\n        <FirstName>Bob</FirstName>\n        <LastName>Johnson</LastName>\n        <Email>bob.johnson@datacorp.com</Email>\n        <Department>Sales</Department>\n        <Position>Sales Director</Position>\n        <Salary>105000.00</Salary>\n        <HireDate>2018-03-20</HireDate>\n      </Employee>\n    </Employees>\n  </Company>\n</DataRoot>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Full SampleData.xml payload (2 companies, 3 employees) sent as Business Central outstream. Expected: 200 OK."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });",
+                  "pm.test('Data is returned', function() { pm.expect(pm.response.json().data).to.not.be.null; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "JSON Wrapped - Valid XML Full",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"xmlContent\": \"<?xml version=\\\"1.0\\\" encoding=\\\"utf-8\\\"?>\\n<DataRoot xmlns=\\\"http://example.com/data\\\" version=\\\"1.0\\\">\\n  <Company>\\n    <CompanyId>1</CompanyId>\\n    <CompanyName>Tech Solutions Inc.</CompanyName>\\n    <Address>\\n      <Street>123 Main Street</Street>\\n      <City>Seattle</City>\\n      <State>WA</State>\\n      <ZipCode>98101</ZipCode>\\n      <Country>USA</Country>\\n    </Address>\\n    <Employees>\\n      <Employee>\\n        <EmployeeId>101</EmployeeId>\\n        <FirstName>John</FirstName>\\n        <LastName>Doe</LastName>\\n        <Email>john.doe@techsolutions.com</Email>\\n        <Department>Engineering</Department>\\n        <Position>Senior Developer</Position>\\n        <Salary>95000.00</Salary>\\n        <HireDate>2020-01-15</HireDate>\\n      </Employee>\\n    </Employees>\\n  </Company>\\n</DataRoot>\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "XML wrapped in JSON body. Expected: 200 OK with success=true."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });",
+                  "pm.test('Message confirms success', function() { pm.expect(pm.response.json().message).to.include('successfully'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "JSON Wrapped - Valid XML Minimal",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"xmlContent\": \"<?xml version=\\\"1.0\\\" encoding=\\\"utf-8\\\"?><DataRoot xmlns=\\\"http://example.com/data\\\" version=\\\"1.0\\\"><Company><CompanyId>1</CompanyId><CompanyName>Test Company</CompanyName><Address><Street>123 Test St</Street><City>Seattle</City><State>WA</State><ZipCode>98101</ZipCode><Country>USA</Country></Address><Employees></Employees></Company></DataRoot>\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Minimal valid JSON-wrapped XML. Expected: 200 OK."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
+                  "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
-      ],
-      "response": []
+      ]
     },
     {
-      "name": "JSON Wrapped - Valid XML Full",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"xmlContent\": \"<?xml version=\\\"1.0\\\" encoding=\\\"utf-8\\\"?>\\n<DataRoot xmlns=\\\"http://example.com/data\\\" version=\\\"1.0\\\">\\n  <Company>\\n    <CompanyId>1</CompanyId>\\n    <CompanyName>Tech Solutions Inc.</CompanyName>\\n    <Address>\\n      <Street>123 Main Street</Street>\\n      <City>Seattle</City>\\n      <State>WA</State>\\n      <ZipCode>98101</ZipCode>\\n      <Country>USA</Country>\\n    </Address>\\n    <Employees>\\n      <Employee>\\n        <EmployeeId>101</EmployeeId>\\n        <FirstName>John</FirstName>\\n        <LastName>Doe</LastName>\\n        <Email>john.doe@techsolutions.com</Email>\\n        <Department>Engineering</Department>\\n        <Position>Senior Developer</Position>\\n        <Salary>95000.00</Salary>\\n        <HireDate>2020-01-15</HireDate>\\n      </Employee>\\n    </Employees>\\n  </Company>\\n</DataRoot>\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
-            {
-              "key": "code",
-              "value": "{{functionKey}}"
-            }
-          ]
-        },
-        "description": "XML wrapped in JSON body. Expected: 200 OK with success=true."
-      },
-      "event": [
+      "name": "UploadXml - Validation Errors",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
-              "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });",
-              "pm.test('Message confirms success', function() { pm.expect(pm.response.json().message).to.include('successfully'); });"
-            ]
-          }
+          "name": "Error - Missing CompanyName (Raw XML)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <Address>\n      <Street>123 Test St</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees></Employees>\n  </Company>\n</DataRoot>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Raw XML missing CompanyName element. Expected: 400 Bad Request with validationErrors array."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
+                  "pm.test('Validation errors returned', function() { pm.expect(pm.response.json().validationErrors).to.be.an('array').that.is.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Error - Wrong Namespace (Raw XML)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <CompanyName>Test</CompanyName>\n    <Address>\n      <Street>123</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees></Employees>\n  </Company>\n</DataRoot>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Raw XML missing required xmlns namespace. Expected: 400 Bad Request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
+                  "pm.test('Validation errors returned', function() { pm.expect(pm.response.json().validationErrors).to.be.an('array').that.is.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Error - Empty Body",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Empty request body. Expected: 400 Bad Request with message mentioning empty body."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
+                  "pm.test('Message mentions empty body', function() { pm.expect(pm.response.json().message.toLowerCase()).to.include('empty'); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Error - Invalid JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ this is not valid json }",
+              "options": { "raw": { "language": "text" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Malformed JSON body with application/json Content-Type. Expected: 400 Bad Request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
-      ],
-      "response": []
+      ]
     },
     {
-      "name": "JSON Wrapped - Valid XML Minimal",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"xmlContent\": \"<?xml version=\\\"1.0\\\" encoding=\\\"utf-8\\\"?><DataRoot xmlns=\\\"http://example.com/data\\\" version=\\\"1.0\\\"><Company><CompanyId>1</CompanyId><CompanyName>Test Company</CompanyName><Address><Street>123 Test St</Street><City>Seattle</City><State>WA</State><ZipCode>98101</ZipCode><Country>USA</Country></Address><Employees></Employees></Company></DataRoot>\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
-            {
-              "key": "code",
-              "value": "{{functionKey}}"
-            }
-          ]
-        },
-        "description": "Minimal valid JSON-wrapped XML. Expected: 200 OK."
-      },
-      "event": [
+      "name": "UploadXml - Auth Errors",
+      "auth": { "type": "noauth" },
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
-              "pm.test('Success is true', function() { pm.expect(pm.response.json().success).to.be.true; });"
-            ]
-          }
-        }
-      ],
-      "response": []
-    },
-    {
-      "name": "Error - Missing CompanyName (Raw XML)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "text/xml; charset=utf-8"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <Address>\n      <Street>123 Test St</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees></Employees>\n  </Company>\n</DataRoot>",
-          "options": {
-            "raw": {
-              "language": "xml"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
+          "name": "No Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <CompanyName>Test</CompanyName>\n    <Address>\n      <Street>123 Test St</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees></Employees>\n  </Company>\n</DataRoot>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Valid XML payload but no Authorization header at all. Expected: 401 Unauthorized."
+          },
+          "event": [
             {
-              "key": "code",
-              "value": "{{functionKey}}"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', function() { pm.response.to.have.status(401); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
+                  "pm.test('Message mentions Bearer token', function() {",
+                  "    pm.expect(pm.response.json().message.toLowerCase()).to.include('bearer');",
+                  "});"
+                ]
+              }
             }
-          ]
+          ],
+          "response": []
         },
-        "description": "Raw XML missing CompanyName element. Expected: 400 Bad Request with validationErrors array."
-      },
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
-              "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
-              "pm.test('Validation errors returned', function() { pm.expect(pm.response.json().validationErrors).to.be.an('array').that.is.not.empty; });"
-            ]
-          }
-        }
-      ],
-      "response": []
-    },
-    {
-      "name": "Error - Wrong Namespace (Raw XML)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "text/xml; charset=utf-8"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <CompanyName>Test</CompanyName>\n    <Address>\n      <Street>123</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees></Employees>\n  </Company>\n</DataRoot>",
-          "options": {
-            "raw": {
-              "language": "xml"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
+          "name": "Invalid Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "text/xml; charset=utf-8" },
+              { "key": "Authorization", "value": "Bearer this.is.not.a.valid.jwt" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DataRoot xmlns=\"http://example.com/data\" version=\"1.0\">\n  <Company>\n    <CompanyId>1</CompanyId>\n    <CompanyName>Test</CompanyName>\n    <Address>\n      <Street>123 Test St</Street>\n      <City>Seattle</City>\n      <State>WA</State>\n      <ZipCode>98101</ZipCode>\n      <Country>USA</Country>\n    </Address>\n    <Employees></Employees>\n  </Company>\n</DataRoot>",
+              "options": { "raw": { "language": "xml" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/UploadXml",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "UploadXml"]
+            },
+            "description": "Authorization header present but token is a malformed JWT. Expected: 401 Unauthorized."
+          },
+          "event": [
             {
-              "key": "code",
-              "value": "{{functionKey}}"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', function() { pm.response.to.have.status(401); });",
+                  "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
+                  "pm.test('Message mentions invalid or expired token', function() {",
+                  "    pm.expect(pm.response.json().message.toLowerCase()).to.include('invalid');",
+                  "});"
+                ]
+              }
             }
-          ]
-        },
-        "description": "Raw XML missing required xmlns namespace. Expected: 400 Bad Request."
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
-              "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
-              "pm.test('Validation errors returned', function() { pm.expect(pm.response.json().validationErrors).to.be.an('array').that.is.not.empty; });"
-            ]
-          }
+          ],
+          "response": []
         }
-      ],
-      "response": []
-    },
-    {
-      "name": "Error - Empty Body",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "text/xml; charset=utf-8"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": ""
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
-            {
-              "key": "code",
-              "value": "{{functionKey}}"
-            }
-          ]
-        },
-        "description": "Empty request body. Expected: 400 Bad Request with message mentioning empty body."
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
-              "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });",
-              "pm.test('Message mentions empty body', function() { pm.expect(pm.response.json().message.toLowerCase()).to.include('empty'); });"
-            ]
-          }
-        }
-      ],
-      "response": []
-    },
-    {
-      "name": "Error - Invalid JSON",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{ this is not valid json }",
-          "options": {
-            "raw": {
-              "language": "text"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/UploadXml?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "UploadXml"],
-          "query": [
-            {
-              "key": "code",
-              "value": "{{functionKey}}"
-            }
-          ]
-        },
-        "description": "Malformed JSON body with application/json Content-Type. Expected: 400 Bad Request."
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 400 Bad Request', function() { pm.response.to.have.status(400); });",
-              "pm.test('Success is false', function() { pm.expect(pm.response.json().success).to.be.false; });"
-            ]
-          }
-        }
-      ],
-      "response": []
-    },
-    {
-      "name": "Health Check - Function1",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/api/Function1?code={{functionKey}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "Function1"],
-          "query": [
-            {
-              "key": "code",
-              "value": "{{functionKey}}"
-            }
-          ]
-        },
-        "description": "Health check to confirm the Azure Function host is running. Expected: 200 OK with Welcome message."
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200 OK', function() { pm.response.to.have.status(200); });",
-              "pm.test('Welcome message returned', function() { pm.expect(pm.response.text()).to.include('Welcome'); });"
-            ]
-          }
-        }
-      ],
-      "response": []
+      ]
     }
   ]
 }

@@ -20,9 +20,9 @@ public class AuthFunction
     {
         _logger = logger;
         _jwtTokenService = jwtTokenService;
-        _apiUsername = configuration["Api__Username"]
+        _apiUsername = configuration["Api:Username"]
             ?? throw new InvalidOperationException("Api__Username is not configured.");
-        _apiPassword = configuration["Api__Password"]
+        _apiPassword = configuration["Api:Password"]
             ?? throw new InvalidOperationException("Api__Password is not configured.");
     }
 
